@@ -1,207 +1,161 @@
 <?php
 /**
  * graphviz-Plugin: Parses graphviz-blocks
- * 
+ *
  * @license    GPL 2 (http://www.gnu.org/licenses/gpl.html)
  * @author     Carl-Christian Salvesen <calle@ioslo.net>
- * @version    0.1.20050525
+ * @author     Andreas Gohr <andi@splitbrain.org>
  */
- 
+
 if(!defined('DOKU_INC')) define('DOKU_INC',realpath(dirname(__FILE__).'/../../').'/');
 require_once(DOKU_INC.'inc/init.php');
 if(!defined('DOKU_PLUGIN')) define('DOKU_PLUGIN',DOKU_INC.'lib/plugins/');
 require_once(DOKU_PLUGIN.'syntax.php');
- 
- 
-/**
- * All DokuWiki plugins to extend the parser/rendering mechanism
- * need to inherit from this class
- */
+
 class syntax_plugin_graphviz extends DokuWiki_Syntax_Plugin {
- 
- 
-  function getInfo(){
-    return array(
-		 'author' => 'Carl-Christian Salvesen',
-		 'email'  => 'calle@ioslo.net',
-		 'date'   => '2007-02-11',
-		 'name'   => 'graphviz Plugin',
-		 'desc'   => 'Parses graphviz-blocks',
-		 'url'    => 'http://wiki.ioslo.net/dokuwiki/graphviz',
-		 );
-  }
- 
-  /**
-   * What kind of syntax are we?
-   */
-  function getType(){
-    return 'protected';
-  }
- 
-  /**
-   * Where to sort in?
-   */ 
-  function getSort(){
-    return 100;
-  }
- 
- 
-  /**
-   * Connect pattern to lexer
-   */
-  function connectTo($mode) {
-    $this->Lexer->addEntryPattern('<graphviz(?=.*\x3C/graphviz\x3E)',$mode,'plugin_graphviz');
-  }
- 
-  function postConnect() {
-    $this->Lexer->addExitPattern('</graphviz>','plugin_graphviz');
-  }
- 
-  /**
-   * Handle the match
-   */
- 
- 
-  function handle($match, $state, $pos) {
-    if ( $state == DOKU_LEXER_UNMATCHED ) {
-      $matches = preg_split('/>/u',$match,2);
-      $matches[0] = trim($matches[0]);
-      if ( trim($matches[0]) == '' ) {
-	$matches[0] = NULL;
-      }
-      return array($matches[1],$matches[0]);
-    }
-    return TRUE;
-  }
-  /**
-   * Create output
-   */
-  function render($mode, &$renderer, $data) {
-    global $conf;
-    if($mode == 'xhtml' && strlen($data[0]) > 1) {
-      if ( !is_dir($conf['mediadir'] . '/graphviz') ) 
-	io_mkdir_p($conf['mediadir'] . '/graphviz'); //Using dokuwiki framework
-      $hash = md5(serialize($data));
-      $filename = $conf['mediadir'] . '/graphviz/'.$hash.'.png';
-      $url = ml('graphviz:'.$hash.'.png'); //Using dokuwiki framework
- 
-      if ( is_readable($filename) ) {
-	// cached.
-	$renderer->doc .= '<img src="'.$url.'" class="media" title="Graph" alt="Graph" />';
-	//						$renderer->doc .= $renderer->internalmedialink('graphviz:'.$hash.'.png');
-	return true;
-      }
- 
-      if (!$this->createImage($filename, $data[0], $data[1])) {
-	$renderer->doc .= '<img src="'.$url.'" class="media" title="Graph" alt="Graph" /> ';
-	//					$renderer->doc .= $renderer->internalmedialink('graphviz:'.$hash.'.png');
-      } else {
-	$renderer->doc .= '**ERROR RENDERING GRAPHVIZ**';
-      }
-      return true;
-    }
-    elseif($mode == 'odt' && strlen($data[0])>1){
-	list($state, $datae) = $data;	
 
-        $hash = md5(serialize($data));
-	$imfilename=$conf['mediadir'] . '/graphviz/'.$hash.'.png';
-	
-	if (is_readable($filename)){
-		     // Content
-		      $renderer->p_close();
-		      $renderer->doc .= '<text:p text:style-name="Table_20_Contents">';
-		      $renderer->_odtAddImage($imfilename);
-		      $renderer->doc .= '</text:p>';
-		      $renderer->p_open();
-		}
-		elseif (!$this->createImage($imfilename, $data[0], $data[1])) {
-			// Content
-	              $renderer->p_close();
+    /**
+     * What about paragraphs?
+     */
+    function getPType(){
+        return 'normal';
+    }
 
-		      $renderer->doc .= '<text:p text:style-name="Table_20_Contents">';
-	              $renderer->_odtAddImage($imfilename);
-		      $renderer->doc .= '</text:p>';
-        	      $renderer->p_open();
-		}
-		else{
-			$renderer->doc .= "UNABLE TO ADD GRAPHVIZ GRAPH";
-		}
-	return true;
+    /**
+     * What kind of syntax are we?
+     */
+    function getType(){
+        return 'substition';
     }
-    elseif($mode == 'latex' && strlen($data[0]) > 1) { //Latex mode for dokuTeXit
-      global $TeXitImage_glob;
-      global $_dokutexit_conf;
-      $hash = md5(serialize($data));
-      if (isset($_dokutexit_conf) && $_dokutexit_conf['mode'] == 'pdflatex') {
-	$filename = $conf['mediadir'] . '/graphviz/'.$hash.'.png';
-      } else {
-	$filename = $conf['mediadir'] . '/graphviz/'.$hash.'.ps';
-      }
-      //Saving filename for zipfile
-      $TeXitImage_glob['plugin_list'][$hash] = $filename; 
-      if (is_readable($filename) ) {
-	// cached.
-	$renderer->doc .= "\\begin{figure}[h]\n";
-	$renderer->doc .= "\t\\begin{center}\n";
-	$renderer->doc .= "\t\t\\includegraphics{";
-	$renderer->doc .= $filename;
-	$renderer->doc .= "}\n";
-	$renderer->doc .= "\t\\end{center}\n";
-	$renderer->doc .= "\\end{figure}\n";
-	return true;
-      }
-      if (!$this->createImageLatex($filename, $data[0], $data[1])) {
-	$renderer->doc .= "\\begin{figure}[h]\n";
-	$renderer->doc .= "\t\\begin{center}\n";
-	$renderer->doc .= "\t\t\\includegraphics{";
-	$renderer->doc .= $filename;
-	$renderer->doc .= "}\n";
-	$renderer->doc .= "\t\\end{center}\n";
-	$renderer->doc .= "\\end{figure}\n";
-      } else {
-	$renderer->putent('**ERROR RENDERING GRAPHVIZ**');
-      }
-      return true;
+
+    /**
+     * Where to sort in?
+     */
+    function getSort(){
+        return 100;
     }
-    return false;
-  }
- 
-  function createImageLatex($filename, &$data, $graphcmd='dot') { //Latex mode have better rendering with ps
-    if (isset($_dokutexit_conf) && $_dokutexit_conf['mode'] == 'pdflatex') {
-      return $this->createImage($filename, $data, $graphcmd);
+
+    /**
+     * Connect pattern to lexer
+     */
+    function connectTo($mode) {
+        $this->Lexer->addSpecialPattern('<graphviz.*?>\n.*?\n</graphviz>',$mode,'plugin_graphviz');
     }
-    $cmds = array('dot','neato','twopi','circo','fdp');
-    if ( !in_array($graphcmd, $cmds) ) $graphcmd = 'dot';
- 
-    $tmpfname = tempnam("/tmp", "dokuwiki.graphviz");
-    io_saveFile($tmpfname, $data);
-    $retval = exec('/usr/bin/'.$graphcmd.' -Gsize="5,4" -Tps ' .
-		   $tmpfname.' -o '. $filename);
-    unlink($tmpfname);
-    return $retval;
-  }
- 
-  function createImage($filename, &$data, $graphcmd='dot') {
- 
-    $cmds = array('dot','neato','twopi','circo','fdp');
-    if ( !in_array($graphcmd, $cmds) ) $graphcmd = 'dot';
- 
-    $tmpfname = tempnam("/tmp", "dokuwiki.graphviz");
-    io_saveFile($tmpfname, $data); //Using dokuwiki framework
-    //    file_put_contents($tmpfname, $data); 
-    //$retval = exec('/usr/bin/'.$graphcmd.' -Tps '.$tmpfname.'|/usr/bin/convert ps:- png:'.$filename);
-    // Comment out the line over this and uncomment the line below to NOT use ImageMagick for antialiazing.
-    // Comment out the line over this and uncomment the line below to NOT use ImageMagick for antialiazing.
- 
- 
-     $retval = exec('/usr/bin/'.$graphcmd.' -Tpng -o '.$filename .' '.$tmpfname);
-    /* WINDOWS VERSION */
-    // change     $tmpfname = tempnam("C:\temp", "dokuwiki.graphviz");
-    //change $retval = exec('C:\grapviz\bin\'.$graphcmd.' -Tpng -o '.$filename .' '.$tmpfname);
-    unlink($tmpfname);
-    return $retval;
-  }
- 
+
+    /**
+     * Handle the match
+     */
+    function handle($match, $state, $pos, &$handler) {
+        $info = $this->getInfo();
+
+        // prepare default data FIXME
+        $return = array(
+                        'data'      => '',
+                        'width'     => 0,
+                        'height'    => 0,
+                        'layout'    => 'dot',
+#                        'antialias' => true,
+#                        'edgesep'   => true,
+#                        'round'     => false,
+#                        'shadow'    => true,
+#                        'scale'     => 1,
+                        'align'     => '',
+                        'version'   => $info['date'], //force rebuild of images on update
+                       );
+
+        // prepare input
+        $lines = explode("\n",$match);
+        $conf = array_shift($lines);
+        array_pop($lines);
+
+        // match config options
+        if(preg_match('/\b(left|center|right)\b/i',$conf,$match)) $return['align'] = $match[1];
+        if(preg_match('/\b(\d+)x(\d+)\b/',$conf,$match)){
+            $return['width']  = $match[1];
+            $return['height'] = $match[2];
+        }
+        if(preg_match('/\b(dot|neato|twopi|circo|fdp)\b/i',$conf,$match)){
+            $return['layout'] = strtolower($match[1]);
+        }
+        if(preg_match('/\b(\d+(\.\d+)?)X\b/',$conf,$match)) $return['scale']  = $match[1];
+        if(preg_match('/\bwidth=([0-9]+)\b/i', $conf,$match)) $return['width'] = $match[1];
+        if(preg_match('/\bheight=([0-9]+)\b/i', $conf,$match)) $return['height'] = $match[1];
+        // match boolean toggles
+        if(preg_match_all('/\b(no)?(antialias|edgesep|round|shadow)\b/i',$conf,$matches,PREG_SET_ORDER)){
+            foreach($matches as $match){
+                $return[$match[2]] = ! $match[1];
+            }
+        }
+
+        $return['data'] = join("\n",$lines);
+
+        return $return;
+    }
+
+    /**
+     * Create output
+     */
+    function render($format, &$R, $data) {
+        if($format != 'xhtml') return;
+
+        if($this->getConf('path')){
+            // run graphviz on our own server
+            $img = DOKU_BASE.'lib/plugins/graphviz/img.php?'.buildURLparams($data,'&');
+        }else{
+
+#FIXME
+            // use ditaa.org for rendering
+            $pass = array(
+                'grid'  => $data['data'],
+                'scale' => $data['scale']
+            );
+            if(!$data['antialias']) $pass['A'] = 'on';
+            if(!$data['shadow'])    $pass['S'] = 'on';
+            if($data['round'])      $pass['r'] = 'on';
+            if(!$data['edgesep'])   $pass['E'] = 'on';
+            $pass['timeout'] = 25;
+
+            $img = 'http://ditaa.org/ditaa/render?'.buildURLparams($pass,'&');
+            $img = ml($img,array('w'=>$data['width'],'h'=>$data['height']));
+        }
+
+        $R->doc .= '<img src="'.$img.'" class="media'.$data['align'].'" alt=""';
+        if($data['width'])  $R->doc .= ' width="'.$data['width'].'"';
+        if($data['height']) $R->doc .= ' height="'.$data['height'].'"';
+        if($data['align'] == 'right') $ret .= ' align="right"';
+        if($data['align'] == 'left')  $ret .= ' align="left"';
+        $R->doc .= '/>';
+    }
+
+
+    /**
+     * Run the graphviz program
+     */
+    function _run($data,$cache) {
+        global $conf;
+
+        $temp = tempnam($conf['tmpdir'],'graphviz_');
+        io_saveFile($temp,$data['data']);
+
+        $cmd  = $this->getConf('path');
+        $cmd .= ' -Tpng';
+        $cmd .= ' -K'.$data['layout'];
+        $cmd .= ' -o'.escapeshellarg($cache); //output
+        $cmd .= ' '.escapeshellarg($temp); //input
+
+        exec($cmd, $output, $error);
+        @unlink($temp);
+
+        if ($error != 0){
+            if($conf['debug']){
+                dbglog(join("\n",$output),'graphviz command failed: '.$cmd);
+            }
+            return false;
+        }
+        return true;
+    }
+
 }
- 
-?>
+
+
+
