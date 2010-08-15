@@ -48,17 +48,12 @@ class syntax_plugin_graphviz extends DokuWiki_Syntax_Plugin {
     function handle($match, $state, $pos, &$handler) {
         $info = $this->getInfo();
 
-        // prepare default data FIXME
+        // prepare default data
         $return = array(
                         'data'      => '',
                         'width'     => 0,
                         'height'    => 0,
                         'layout'    => 'dot',
-#                        'antialias' => true,
-#                        'edgesep'   => true,
-#                        'round'     => false,
-#                        'shadow'    => true,
-#                        'scale'     => 1,
                         'align'     => '',
                         'version'   => $info['date'], //force rebuild of images on update
                        );
@@ -77,15 +72,8 @@ class syntax_plugin_graphviz extends DokuWiki_Syntax_Plugin {
         if(preg_match('/\b(dot|neato|twopi|circo|fdp)\b/i',$conf,$match)){
             $return['layout'] = strtolower($match[1]);
         }
-        if(preg_match('/\b(\d+(\.\d+)?)X\b/',$conf,$match)) $return['scale']  = $match[1];
         if(preg_match('/\bwidth=([0-9]+)\b/i', $conf,$match)) $return['width'] = $match[1];
         if(preg_match('/\bheight=([0-9]+)\b/i', $conf,$match)) $return['height'] = $match[1];
-        // match boolean toggles
-        if(preg_match_all('/\b(no)?(antialias|edgesep|round|shadow)\b/i',$conf,$matches,PREG_SET_ORDER)){
-            foreach($matches as $match){
-                $return[$match[2]] = ! $match[1];
-            }
-        }
 
         $return['data'] = join("\n",$lines);
 
@@ -94,31 +82,13 @@ class syntax_plugin_graphviz extends DokuWiki_Syntax_Plugin {
 
     /**
      * Create output
+     *
+     * @todo latex and ODT support
      */
     function render($format, &$R, $data) {
         if($format != 'xhtml') return;
 
-        if($this->getConf('path')){
-            // run graphviz on our own server
-            $img = DOKU_BASE.'lib/plugins/graphviz/img.php?'.buildURLparams($data,'&');
-        }else{
-
-#FIXME
-            // use ditaa.org for rendering
-            $pass = array(
-                'grid'  => $data['data'],
-                'scale' => $data['scale']
-            );
-            if(!$data['antialias']) $pass['A'] = 'on';
-            if(!$data['shadow'])    $pass['S'] = 'on';
-            if($data['round'])      $pass['r'] = 'on';
-            if(!$data['edgesep'])   $pass['E'] = 'on';
-            $pass['timeout'] = 25;
-
-            $img = 'http://ditaa.org/ditaa/render?'.buildURLparams($pass,'&');
-            $img = ml($img,array('w'=>$data['width'],'h'=>$data['height']));
-        }
-
+        $img = $this->_imgurl($data);
         $R->doc .= '<img src="'.$img.'" class="media'.$data['align'].'" alt=""';
         if($data['width'])  $R->doc .= ' width="'.$data['width'].'"';
         if($data['height']) $R->doc .= ' height="'.$data['height'].'"';
@@ -127,6 +97,29 @@ class syntax_plugin_graphviz extends DokuWiki_Syntax_Plugin {
         $R->doc .= '/>';
     }
 
+    /**
+     * Build the image URL using either our own generator or
+     * the Google Chart API
+     */
+    function _imgurl($data){
+        if($this->getConf('path')){
+            // run graphviz on our own server
+            $img = DOKU_BASE.'lib/plugins/graphviz/img.php?'.buildURLparams($data,'&');
+        }else{
+            // go through google
+            $pass = array(
+                'cht' => 'gv:'.$data['layout'],
+                'chl' => $data['data'],
+            );
+            if($data['width'] && $data['height']){
+                 $pass['chs'] = $data['width'].'x'.$data['height'];
+            }
+
+            $img = 'http://chart.apis.google.com/chart?'.buildURLparams($pass,'&');
+            $img = ml($img,array('w'=>$data['width'],'h'=>$data['height']));
+        }
+        return $img;
+    }
 
     /**
      * Run the graphviz program
