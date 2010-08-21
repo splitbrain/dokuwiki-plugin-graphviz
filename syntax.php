@@ -83,18 +83,24 @@ class syntax_plugin_graphviz extends DokuWiki_Syntax_Plugin {
     /**
      * Create output
      *
-     * @todo latex and ODT support
+     * @todo latex support?
      */
     function render($format, &$R, $data) {
-        if($format != 'xhtml') return;
-
-        $img = $this->_imgurl($data);
-        $R->doc .= '<img src="'.$img.'" class="media'.$data['align'].'" alt=""';
-        if($data['width'])  $R->doc .= ' width="'.$data['width'].'"';
-        if($data['height']) $R->doc .= ' height="'.$data['height'].'"';
-        if($data['align'] == 'right') $ret .= ' align="right"';
-        if($data['align'] == 'left')  $ret .= ' align="left"';
-        $R->doc .= '/>';
+        if($format == 'xhtml'){
+            $img = $this->_imgurl($data);
+            $R->doc .= '<img src="'.$img.'" class="media'.$data['align'].'" alt=""';
+            if($data['width'])  $R->doc .= ' width="'.$data['width'].'"';
+            if($data['height']) $R->doc .= ' height="'.$data['height'].'"';
+            if($data['align'] == 'right') $ret .= ' align="right"';
+            if($data['align'] == 'left')  $ret .= ' align="left"';
+            $R->doc .= '/>';
+            return true;
+        }elseif($format == 'odt'){
+            $src = $this->_imgfile($data);
+            $R->_odtAddImage($src,$data['width'],$data['height'],$data['align']);
+            return true;
+        }
+        return false;
     }
 
     /**
