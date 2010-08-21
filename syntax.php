@@ -122,6 +122,30 @@ class syntax_plugin_graphviz extends DokuWiki_Syntax_Plugin {
     }
 
     /**
+     * Return path to created graphviz graph (local only)
+     */
+    function _imgfile($data){
+        $w = (int) $data['width'];
+        $h = (int) $data['height'];
+        unset($data['width']);
+        unset($data['height']);
+        unset($data['align']);
+
+        $cache = getcachename(join('x',array_values($data)),'graphviz.png');
+
+        // create the file if needed
+        if(!file_exists($cache)){
+            $this->_run($data,$cache);
+            clearstatcache();
+        }
+
+        // resized version
+        if($w) $cache = media_resize_image($cache,'png',$w,$h);
+
+        return $cache;
+    }
+
+    /**
      * Run the graphviz program
      */
     function _run($data,$cache) {

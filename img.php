@@ -11,24 +11,11 @@ require_once(DOKU_INC.'inc/pageutils.php');
 require_once(DOKU_INC.'inc/httputils.php');
 require_once(DOKU_INC.'inc/io.php');
 
+// let the plugin do the work
 $data = $_REQUEST;
-$w = (int) $data['width'];
-$h = (int) $data['height'];
-unset($data['width']);
-unset($data['height']);
-unset($data['align']);
+$plugin = plugin_load('syntax','graphviz');
+$cache  = $plugin->_imgfile($data);
 
-$cache = getcachename(join('x',array_values($data)),'graphviz.png');
-
-// create the file if needed
-if(!file_exists($cache)){
-    $plugin = plugin_load('syntax','graphviz');
-    $plugin->_run($data,$cache);
-    clearstatcache();
-}
-
-// resized version
-if($w) $cache = media_resize_image($cache,'png',$w,$h);
 
 // something went wrong, we're missing the file
 if(!file_exists($cache)){
