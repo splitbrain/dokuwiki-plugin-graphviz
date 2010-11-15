@@ -7,8 +7,8 @@
  * @author     Andreas Gohr <andi@splitbrain.org>
  */
 
+
 if(!defined('DOKU_INC')) define('DOKU_INC',realpath(dirname(__FILE__).'/../../').'/');
-require_once(DOKU_INC.'inc/init.php');
 if(!defined('DOKU_PLUGIN')) define('DOKU_PLUGIN',DOKU_INC.'lib/plugins/');
 require_once(DOKU_PLUGIN.'syntax.php');
 
@@ -32,7 +32,7 @@ class syntax_plugin_graphviz extends DokuWiki_Syntax_Plugin {
      * Where to sort in?
      */
     function getSort(){
-        return 100;
+        return 200;
     }
 
     /**
@@ -50,7 +50,6 @@ class syntax_plugin_graphviz extends DokuWiki_Syntax_Plugin {
 
         // prepare default data
         $return = array(
-                        'data'      => '',
                         'width'     => 0,
                         'height'    => 0,
                         'layout'    => 'dot',
@@ -75,19 +74,32 @@ class syntax_plugin_graphviz extends DokuWiki_Syntax_Plugin {
         if(preg_match('/\bwidth=([0-9]+)\b/i', $conf,$match)) $return['width'] = $match[1];
         if(preg_match('/\bheight=([0-9]+)\b/i', $conf,$match)) $return['height'] = $match[1];
 
-        $return['data'] = join("\n",$lines);
+
+        $input = join("\n",$lines);
+        $return['md5'] = md5($input); // we only pass a hash around
+
+        // store input for later use
+        io_saveFile($this->_cachename($return,'txt'),$input);
 
         return $return;
     }
 
     /**
+     * Cache file is based on parameters that influence the result image
+     */
+    function _cachename($data,$ext){
+        unset($data['width']);
+        unset($data['height']);
+        unset($data['align']);
+        return getcachename(join('x',array_values($data)),'.graphviz.'.$ext);
+    }
+
+    /**
      * Create output
-     *
-     * @todo latex support?
      */
     function render($format, &$R, $data) {
         if($format == 'xhtml'){
-            $img = $this->_imgurl($data);
+            $img = DOKU_BASE.'lib/plugins/graphviz/img.php?'.buildURLparams($data);
             $R->doc .= '<img src="'.$img.'" class="media'.$data['align'].'" alt=""';
             if($data['width'])  $R->doc .= ' width="'.$data['width'].'"';
             if($data['height']) $R->doc .= ' height="'.$data['height'].'"';
@@ -104,70 +116,78 @@ class syntax_plugin_graphviz extends DokuWiki_Syntax_Plugin {
     }
 
     /**
-     * Build the image URL using either our own generator or
-     * the Google Chart API
-     */
-    function _imgurl($data){
-        if($this->getConf('path')){
-            // run graphviz on our own server
-            $img = DOKU_BASE.'lib/plugins/graphviz/img.php?'.buildURLparams($data,'&');
-        }else{
-            // go through google
-            $pass = array(
-                'cht' => 'gv:'.$data['layout'],
-                'chl' => $data['data'],
-            );
-            if($data['width'] && $data['height']){
-                 $pass['chs'] = $data['width'].'x'.$data['height'];
-            }
-
-            $img = 'http://chart.apis.google.com/chart?'.buildURLparams($pass,'&');
-            $img = ml($img,array('w'=>$data['width'],'h'=>$data['height']));
-        }
-        return $img;
-    }
-
-    /**
-     * Return path to created graphviz graph (local only)
+     * Return path to the rendered image on our local system
      */
     function _imgfile($data){
-        $w = (int) $data['width'];
-        $h = (int) $data['height'];
-        unset($data['width']);
-        unset($data['height']);
-        unset($data['align']);
-
-        $cache = getcachename(join('x',array_values($data)),'graphviz.png');
+        $cache  = $this->_cachename($data,'png');
 
         // create the file if needed
         if(!file_exists($cache)){
-            $this->_run($data,$cache);
+            $in = $this->_cachename($data,'txt');
+            if($this->getConf('path')){
+                $ok = $this->_run($data,$in,$cache);
+            }else{
+                $ok = $this->_remote($data,$in,$cache);
+            }
+            if(!$ok) return false;
             clearstatcache();
         }
 
         // resized version
-        if($w) $cache = media_resize_image($cache,'png',$w,$h);
+        if($data['width']){
+            $cache = media_resize_image($cache,'png',$data['width'],$data['height']);
+        }
+
+        // something went wrong, we're missing the file
+        if(!file_exists($cache)) return false;
 
         return $cache;
     }
 
     /**
+     * Render the output remotely at google
+     */
+    function _remote($data,$in,$out){
+        if(!file_exists($in)){
+            if($conf['debug']){
+                dbglog($in,'no such graphviz input file');
+            }
+            return false;
+        }
+
+        $http = new DokuHTTPClient();
+        $http->timeout=30;
+
+        $pass = array();
+        $pass['cht'] = 'gv:'.$data['layout'];
+        $pass['chl'] = io_readFile($in);
+
+        $img = $http->post('http://chart.apis.google.com/chart',$pass,'&');
+        if(!$img) return false;
+
+        return io_saveFile($out,$img);
+    }
+
+    /**
      * Run the graphviz program
      */
-    function _run($data,$cache) {
+    function _run($data,$in,$out) {
         global $conf;
 
-        $temp = tempnam($conf['tmpdir'],'graphviz_');
-        io_saveFile($temp,$data['data']);
+        if(!file_exists($in)){
+            if($conf['debug']){
+                dbglog($in,'no such graphviz input file');
+            }
+            return false;
+        }
 
         $cmd  = $this->getConf('path');
         $cmd .= ' -Tpng';
         $cmd .= ' -K'.$data['layout'];
-        $cmd .= ' -o'.escapeshellarg($cache); //output
-        $cmd .= ' '.escapeshellarg($temp); //input
+        $cmd .= ' -o'.escapeshellarg($out); //output
+        $cmd .= ' '.escapeshellarg($in); //input
 
         exec($cmd, $output, $error);
-        @unlink($temp);
 
         if ($error != 0){
             if($conf['debug']){
