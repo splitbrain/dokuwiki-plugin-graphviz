@@ -103,8 +103,8 @@ class syntax_plugin_graphviz extends DokuWiki_Syntax_Plugin {
             $R->doc .= '<img src="'.$img.'" class="media'.$data['align'].'" alt=""';
             if($data['width'])  $R->doc .= ' width="'.$data['width'].'"';
             if($data['height']) $R->doc .= ' height="'.$data['height'].'"';
-            if($data['align'] == 'right') $ret .= ' align="right"';
-            if($data['align'] == 'left')  $ret .= ' align="left"';
+            if($data['align'] == 'right') $R->doc .= ' align="right"';
+            if($data['align'] == 'left')  $R->doc .= ' align="left"';
             $R->doc .= '/>';
             return true;
         }elseif($format == 'odt'){
