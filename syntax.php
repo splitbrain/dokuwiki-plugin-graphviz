@@ -96,15 +96,23 @@ class syntax_plugin_graphviz extends DokuWiki_Syntax_Plugin {
 
     /**
      * Create output
+     * Edited by Michael Kling for the MAP patch.
+     * @todo ODT format doesnt support maps
      */
     function render($format, &$R, $data) {
         if($format == 'xhtml'){
             $img = DOKU_BASE.'lib/plugins/graphviz/img.php?'.buildURLparams($data);
+            $mapcache  = $this->_mapfile($data);
+            $map = io_readFile($mapcache,false);
+            if ($mapcache !== false) {
+              $R->doc .= '<map name="'.$data['md5'].'" id="'.$data['md5'].'">'.$map.'</map>'; 
+            }
             $R->doc .= '<img src="'.$img.'" class="media'.$data['align'].'" alt=""';
             if($data['width'])  $R->doc .= ' width="'.$data['width'].'"';
             if($data['height']) $R->doc .= ' height="'.$data['height'].'"';
             if($data['align'] == 'right') $R->doc .= ' align="right"';
             if($data['align'] == 'left')  $R->doc .= ' align="left"';
+            if($mapcache !== false)  $R->doc .= ' usemap="#'.$data['md5'].'"';
             $R->doc .= '/>';
             return true;
         }elseif($format == 'odt'){
@@ -143,6 +151,33 @@ class syntax_plugin_graphviz extends DokuWiki_Syntax_Plugin {
 
         return $cache;
     }
+
+    /**
+     * Return path to the rendered map on our local system
+     * @Todo: Doesnt resize the map in case the image was resized
+     * @Todo: Remotehandling on google isnt realized
+     * @Author: Michael Kling
+     */    
+    function _mapfile($data){
+        $cache  = $this->_cachename($data,'map');
+
+        // create the file if needed
+        if(!file_exists($cache)){
+            $in = $this->_cachename($data,'txt');
+            if($this->getConf('path')){
+                $ok = $this->_map($data,$in,$cache);
+            }else{
+                //Dont handle it remote at google cause i dont know how to do
+            }
+            if(!$ok) return false;
+            clearstatcache();
+        }
+
+        // something went wrong, we're missing the file
+        if(!file_exists($cache)) return false;
+
+        return $cache;
+    }	
 
     /**
      * Render the output remotely at google
@@ -194,7 +229,39 @@ class syntax_plugin_graphviz extends DokuWiki_Syntax_Plugin {
                 dbglog(join("\n",$output),'graphviz command failed: '.$cmd);
             }
             return false;
-        }
+        }	
+		
+        return true;
+    }
+
+    /**
+     * Run the graphviz program to generate the map
+     * @Author: Michael Kling
+     */	
+    function _map($data,$in,$out) {
+        global $conf;
+
+        if(!file_exists($in)){
+            if($conf['debug']){
+                dbglog($in,'no such graphviz input file');
+            }
+            return false;
+        }		
+	
+        $cmd  = $this->getConf('path');
+        $cmd .= ' -Tcmap';
+        $cmd .= ' -K'.$data['layout'];
+        $cmd .= ' -o'.escapeshellarg($out); //output
+        $cmd .= ' '.escapeshellarg($in); //input
+		
+        $result = exec($cmd, $output, $error);
+
+        if ($error != 0){
+            if($conf['debug']){
+                dbglog(join("\n",$output),'graphviz command failed: '.$cmd);
+            }
+            return false;
+        }		
         return true;
     }
 
