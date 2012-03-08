@@ -50,6 +50,7 @@ class syntax_plugin_graphviz extends DokuWiki_Syntax_Plugin {
 
         // prepare default data
         $return = array(
+                        'dpi'       => 0,
                         'width'     => 0,
                         'height'    => 0,
                         'layout'    => 'dot',
@@ -73,6 +74,8 @@ class syntax_plugin_graphviz extends DokuWiki_Syntax_Plugin {
         }
         if(preg_match('/\bwidth=([0-9]+)\b/i', $conf,$match)) $return['width'] = $match[1];
         if(preg_match('/\bheight=([0-9]+)\b/i', $conf,$match)) $return['height'] = $match[1];
+
+        if(preg_match('/\bdpi=([0-9]+)\b/i', $conf,$match)) $return['dpi'] = $match[1];
 
         $input = join("\n",$lines);
         $return['md5'] = md5($input); // we only pass a hash around
@@ -308,6 +311,10 @@ function showhide(obj)
         $cmd .= ' -K'.$data['layout'];
         $cmd .= ' -o'.escapeshellarg($out); //output
         $cmd .= ' '.escapeshellarg($in); //input
+        if (isset($data['dpi']) && $data['dpi'] > 0) {
+            $cmd .= sprintf(" -Gdpi=%d", $data['dpi']);
+        }
+
 
         exec($cmd, $output, $error);
 
