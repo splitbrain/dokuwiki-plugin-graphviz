@@ -1,0 +1,57 @@
+BEG_G {
+    char* layerlistdelims, layersep, larr[int], outsep="", selisarr[int], selarr[int], selarrtmp[int];
+    int i, ct = 0, into;
+
+    if (!isAttr($, "G", "layers"))
+        return;
+
+    if (isAttr($, "G", "layersep"))
+        layersep = aget($,layersep);
+    else
+        layersep = " :\t";
+
+    if (isAttr($,"G","layerlistdelims"))
+        layerlistdelims = aget($,layerlistdelims);
+    else
+        layerlistdelims = ",";
+
+    tokens($.layers, larr, layersep);
+    
+    if (isAttr($, "G", "layerselect")) {
+        tokens($.layerselect, selisarr, layerlistdelims);
+        for (selisarr[i]) {
+            unset(selarrtmp);
+            tokens(selisarr[i], selarrtmp, layersep);
+            if (#selarrtmp == 0) {
+                continue;
+            }
+            else if (#selarrtmp == 1) {
+                selarr[ct++] = selisarr[i];
+                }
+            else if (#selarrtmp == 2) {
+                into = 0;
+                for (larr[i]) {
+                    if (larr[i] == selarrtmp[0])
+                        into = 1;
+                    if (into == 1)
+                        selarr[ct++] = larr[i];
+                    if (larr[i] == selarrtmp[1]) {
+                        into = 0;
+                        break;
+                        }
+                    }
+                }
+            else {
+                exit(1);
+            }
+        }
+        for (selarr[i]) {
+            printf("%s\n", selarr[i]);
+        }        
+    }
+    else {
+        for (larr[i]) {
+            printf("%s\n", larr[i]);
+        }
+    }
+}
