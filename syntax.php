@@ -50,11 +50,11 @@ class syntax_plugin_graphviz extends DokuWiki_Syntax_Plugin {
 
         // prepare default data
         $return = array(
-                        'dpi'       => 0,
                         'width'     => 0,
                         'height'    => 0,
                         'layout'    => 'dot',
                         'align'     => '',
+                        'dpi'       => 0,
                         'version'   => $info['date'], //force rebuild of images on update
                        );
 
