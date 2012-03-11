@@ -136,9 +136,7 @@ I need: the height and the width of the image to dimension the external div tag
 
             /* get image dimensions */
             $cache  = $this->_imgfile($data);
-            unset($out);
-            exec(sprintf("identify -format '%%Wx%%H' %s", $cache), $out, $retval);
-            $size = explode("x", $out[0]);
+            $size = getimagesize($cache);
 
             $width  = ($data['width'] > 0 ? $data['width']   : $size[0]);
             $height = ($data['height'] > 0 ? $data['height'] : $size[1]);
@@ -201,10 +199,7 @@ function showhide(obj)
                 return $this->_render_layered_xhtml($format, &$R, $data, $out, $in);
             }
             $cache  = $this->_imgfile($data);
-            $req = sprintf("identify -format '%%Wx%%H' %s", $cache);
-            exec($req, $out, $retval);
-
-            $size = explode("x", $out[0]);
+            $size = getimagesize($cache);
 
             $img = DOKU_BASE.'lib/plugins/graphviz/img.php?'.buildURLparams($data);
             $R->doc .= '<img src="'.$img.'" class="media'.$data['align'].'" alt=""';
