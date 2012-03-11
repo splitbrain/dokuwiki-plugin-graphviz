@@ -3,6 +3,7 @@
  * graphviz-Plugin: Parses graphviz-blocks
  *
  * @license    GPL 2 (http://www.gnu.org/licenses/gpl.html)
+ * @author     Matteo Nastasi <nastasi@alternativeoutput.it>
  * @author     Carl-Christian Salvesen <calle@ioslo.net>
  * @author     Andreas Gohr <andi@splitbrain.org>
  */
