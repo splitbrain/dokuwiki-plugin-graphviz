@@ -172,23 +172,25 @@ function showhide(obj)
             if($data['align'] == 'left')  $R->doc .= ' align="left"';
             $R->doc .= '/>';
             */
-            for ($i = $layers_n - 1 ; $i >= 0 ; $i--) {
-                $force_view = ($i == ($layers_n - 1) ? TRUE : FALSE);
+            for ($i = 0 ; $i < $layers_n ; $i++) {
+                $force_view = ($i == 0 ? TRUE : FALSE);
                 $data['layer_cur'] = $i;
                 $img = DOKU_BASE.'lib/plugins/graphviz/img.php?'.buildURLparams($data);
                 $R->doc .= sprintf('<img id="%s_%d" style="position: absolute; visibility: %s; left: 0px; top: %dpx;" src="%s">'."\n",
                                    $prefix, $i,
                                    (array_search($layers[$i], $selayers) === FALSE && !$force_view ? "hidden" : "visible"), 
-                                   (isset($data['slicespace']) && $data['slicespace'] > 0 ? $data['slicespace'] * $i : 0),
+                                   (isset($data['slicespace']) && $data['slicespace'] > 0 ? $data['slicespace'] * ($layers_n - $i -1) : 0),
                                    $img);
             }
             $R->doc .= sprintf('</div><form>');
-            for ($i = 0 ; $i < $layers_n ; $i++) {
-                if ($i == ($layers_n - 1) && $layers[$i] == '_background_')
+            for ($first = true, $i = $layers_n - 1 ; $i >= 0 ; $i--) {
+            // for ($i = 0, $first = true ; $i < $layers_n ; $i++) {
+                if ($i == 0 && $layers[$i] == '_background_')
                     continue;
                 $R->doc .= sprintf('%s<input type="checkbox"%s name="%s_%d" onclick=\'showhide(this);\'> %s '."\n",
-                                   ($i > 0 ? ": " : ""), (array_search($layers[$i], $selayers) === FALSE ? "" : " checked"),
+                                   ($first != true ? ": " : ""), (array_search($layers[$i], $selayers) === FALSE ? "" : " checked"),
                                    $prefix, $i, htmlentities($layers[$i]));
+                $first = false;
             }
 
             $R->doc .= sprintf('</form></div>');
@@ -306,7 +308,7 @@ function showhide(obj)
             $script = 'BEG_G { char* larr[int]; int i; if (!isAttr($,"G","layers")) return; if (isAttr($,"G","layersep")) tokens($.layers,larr,$.layersep); else tokens($.layers,larr," :\t"); for (larr[i]) { printf("%s\n",larr[i]); } }';
             exec(sprintf("%s/gvpr %s %s", escapeshellarg($gvpath), escapeshellarg($script), escapeshellarg($in)),
                  $exout, $retval);
-            $cmd .= sprintf(" '-Glayerselect=%s'%s", $exout[$data['layer_cur']], ((int)$data['layer_cur'] < (int)$data['layer_n'] - 1 ? ' -Gbgcolor=#00000000' : ''));
+            $cmd .= sprintf(" '-Glayerselect=%s'%s", $exout[$data['layer_cur']], ((int)$data['layer_cur'] > 0 ? ' -Gbgcolor=#00000000' : ''));
         }
 
         $cmd .= ' -Tpng';
