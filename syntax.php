@@ -318,6 +318,7 @@ function showhide(obj)
         if (isset($data['dpi']) && $data['dpi'] > 0) {
             $cmd .= sprintf(" -Gdpi=%d", $data['dpi']);
         }
+        $cmd .= ' 2>/dev/null';
 
         exec($cmd, $output, $error);
 
