@@ -3,6 +3,7 @@
  * graphviz-Plugin: Parses graphviz-blocks
  *
  * @license    GPL 2 (http://www.gnu.org/licenses/gpl.html)
+ * @author     Matteo Nastasi <nastasi@alternativeoutput.it>
  * @author     Carl-Christian Salvesen <calle@ioslo.net>
  * @author     Andreas Gohr <andi@splitbrain.org>
  */
@@ -54,6 +55,8 @@ class syntax_plugin_graphviz extends DokuWiki_Syntax_Plugin {
                         'height'    => 0,
                         'layout'    => 'dot',
                         'align'     => '',
+                        'dpi'       => 0,
+                        'slicespace'=> 0,
                         'version'   => $info['date'], //force rebuild of images on update
                        );
 
@@ -74,6 +77,9 @@ class syntax_plugin_graphviz extends DokuWiki_Syntax_Plugin {
         if(preg_match('/\bwidth=([0-9]+)\b/i', $conf,$match)) $return['width'] = $match[1];
         if(preg_match('/\bheight=([0-9]+)\b/i', $conf,$match)) $return['height'] = $match[1];
 
+        if(preg_match('/\bdpi=([0-9]+)\b/i', $conf,$match)) $return['dpi'] = $match[1];
+        if(in_array  ('imagick', get_loaded_extensions()) &&
+           preg_match('/\bslicespace=([0-9]+)\b/i', $conf,$match)) $return['slicespace'] = $match[1];
 
         $input = join("\n",$lines);
         $return['md5'] = md5($input); // we only pass a hash around
@@ -91,14 +97,119 @@ class syntax_plugin_graphviz extends DokuWiki_Syntax_Plugin {
         unset($data['width']);
         unset($data['height']);
         unset($data['align']);
+        unset($data['layer_n']);
+        unset($data['layer_cur']);
+
         return getcachename(join('x',array_values($data)),'.graphviz.'.$ext);
     }
 
     /**
      * Create output
      */
+    /* -- code example --
+<div style="background-color: lightblue;">
+<script type="text/javascript"><!--
+function $(id) { return document.getElementById(id); }
+
+function showhide(obj)
+{
+    // alert("NAME: ["+obj.name+"] value: ["+(obj.checked == true ? "visible" : "hidden")+"]");
+    $(obj.name).style.visibility = (obj.checked == true ? "visible" : "hidden");
+}
+//-->
+</script>
+<div style="background-color: yellow; position: relative; height: 32px;">
+<!-- <img style="height: 32px;" src="onepixel.png"> -->
+<img id="one" style="position: absolute; left: 0px; top: 0px; height: 32px;" src="one.png">
+<img id="two" style="position: absolute; left: 0px; top: 0px;" src="two.png">
+
+I need: the height and the width of the image to dimension the external div tag
+     */
+    function _render_layered_xhtml($format, &$R, $data, $layers, $in) {
+            $prefix = basename($in, ".graphviz.txt");
+            $gvpath = dirname($this->getConf('path'));
+
+            $layers_n = count($layers);
+            $data['layer_n'] = $layers_n;
+
+            /* get selected layers */
+            unset($out);
+            exec(sprintf("%s/gvpr -f %s %s", escapeshellarg($gvpath),
+                         escapeshellarg(DOKU_PLUGIN.'graphviz/get-layerselect-list.gvp'),
+                         escapeshellarg($in)), $out, $retval);
+            $selayers = $out;
+
+            /* FIXME: if dimension is explicitly added use it instead of calculated */
+
+            /* get image dimensions */
+            $cache  = $this->_imgfile($data);
+            $size = getimagesize($cache);
+
+            $width  = ($data['width'] > 0 ? $data['width']   : $size[0]);
+            $height = ($data['height'] > 0 ? $data['height'] : $size[1]);
+            $R->doc .= sprintf('<div class="media%s" style="width: %dpx; %s /*background-color: lightblue;*/">
+<script type="text/javascript"><!--
+function $(id) { return document.getElementById(id); }
+
+function showhide(obj)
+{
+    // alert("NAME: ["+obj.name+"] value: ["+(obj.checked == true ? "visible" : "hidden")+"]");
+    $(obj.name).style.visibility = (obj.checked == true ? "visible" : "hidden");
+}
+//-->
+</script>
+<div style="/* background-color: yellow; */position: relative; width: %dpx; height: %dpx;">'."\n",
+                               $data['align'], $width, ($data['align'] == '' ? '' : "align: ".$data['align']."; "),
+                               $width, $height + (isset($data['slicespace']) && $data['slicespace'] > 0 ? $data['slicespace'] * ($layers_n - 1) : 0));
+            $img = DOKU_BASE.'lib/plugins/graphviz/img.php?'.buildURLparams($data);
+            // $in = $this->_cachename($data,'txt');
+            /*
+              $R->doc .= '<img src="'.$img.'" class="media'.$data['align'].'" alt=""';
+            // $R->doc .= '<!-- zorro2 --><img src="'.$img.'" class="media'.$data['align'].'" alt=""';
+            if($data['width'])  $R->doc .= ' width="'.$data['width'].'"';
+            if($data['height']) $R->doc .= ' height="'.$data['height'].'"';
+            if($data['align'] == 'right') $R->doc .= ' align="right"';
+            if($data['align'] == 'left')  $R->doc .= ' align="left"';
+            $R->doc .= '/>';
+            */
+            for ($i = 0 ; $i < $layers_n ; $i++) {
+                $force_view = ($i == 0 ? TRUE : FALSE);
+                $data['layer_cur'] = $i;
+                $img = DOKU_BASE.'lib/plugins/graphviz/img.php?'.buildURLparams($data);
+                $R->doc .= sprintf('<img id="%s_%d" style="position: absolute; visibility: %s; left: 0px; top: %dpx;" src="%s">'."\n",
+                                   $prefix, $i,
+                                   (array_search($layers[$i], $selayers) === FALSE && !$force_view ? "hidden" : "visible"), 
+                                   (isset($data['slicespace']) && $data['slicespace'] > 0 ? $data['slicespace'] * ($layers_n - $i -1) : 0),
+                                   $img);
+            }
+            $R->doc .= sprintf('</div><form>');
+            for ($first = true, $i = $layers_n - 1 ; $i >= 0 ; $i--) {
+            // for ($i = 0, $first = true ; $i < $layers_n ; $i++) {
+                if ($i == 0 && $layers[$i] == '_background_')
+                    continue;
+                $R->doc .= sprintf('%s<input type="checkbox"%s name="%s_%d" onclick=\'showhide(this);\'> %s '."\n",
+                                   ($first != true ? ": " : ""), (array_search($layers[$i], $selayers) === FALSE ? "" : " checked"),
+                                   $prefix, $i, htmlentities($layers[$i]));
+                $first = false;
+            }
+
+            $R->doc .= sprintf('</form></div>');
+            return true;
+    }
+
     function render($format, &$R, $data) {
         if($format == 'xhtml'){
+            $in = $this->_cachename($data,'txt');
+            $gvpath = dirname($this->getConf('path'));
+            $script = 'BEG_G { char* larr[int]; int i; if (!isAttr($,"G","layers")) return; if (isAttr($,"G","layersep")) tokens($.layers,larr,$.layersep); else tokens($.layers,larr," :\t"); for (larr[i]) { printf("%s\n",larr[i]); } }';
+            exec(sprintf("%s/gvpr %s %s", escapeshellarg($gvpath), escapeshellarg($script), escapeshellarg($in)),
+                 $out, $retval);
+            if ($out[0] != "") {
+                return $this->_render_layered_xhtml($format, &$R, $data, $out, $in);
+            }
+            $cache  = $this->_imgfile($data);
+            $size = getimagesize($cache);
+
             $img = DOKU_BASE.'lib/plugins/graphviz/img.php?'.buildURLparams($data);
             $R->doc .= '<img src="'.$img.'" class="media'.$data['align'].'" alt=""';
             if($data['width'])  $R->doc .= ' width="'.$data['width'].'"';
@@ -119,11 +230,21 @@ class syntax_plugin_graphviz extends DokuWiki_Syntax_Plugin {
      * Return path to the rendered image on our local system
      */
     function _imgfile($data){
-        $cache  = $this->_cachename($data,'png');
+        $txt_data = $data;
+        unset($txt_data['layer_n']);
+        unset($txt_data['layer_cur']);
+
+        if (isset($data['layer_n']) && isset($data['layer_cur']) &&
+            $data['layer_cur'] >= 0 && $data['layer_cur'] < $data['layer_n']) {
+            $cache = $this->_cachename($data,sprintf("%d.png", $data['layer_cur']));
+        }
+        else {
+            $cache = $this->_cachename($data,'png');
+        }
 
         // create the file if needed
         if(!file_exists($cache)){
-            $in = $this->_cachename($data,'txt');
+            $in = $this->_cachename($txt_data,'txt');
             if($this->getConf('path')){
                 $ok = $this->_run($data,$in,$cache);
             }else{
@@ -182,12 +303,44 @@ class syntax_plugin_graphviz extends DokuWiki_Syntax_Plugin {
         }
 
         $cmd  = $this->getConf('path');
+        if (isset($data['layer_n']) && isset($data['layer_cur'])) {
+            $gvpath = dirname($this->getConf('path'));
+            $script = 'BEG_G { char* larr[int]; int i; if (!isAttr($,"G","layers")) return; if (isAttr($,"G","layersep")) tokens($.layers,larr,$.layersep); else tokens($.layers,larr," :\t"); for (larr[i]) { printf("%s\n",larr[i]); } }';
+            exec(sprintf("%s/gvpr %s %s", escapeshellarg($gvpath), escapeshellarg($script), escapeshellarg($in)),
+                 $exout, $retval);
+            $cmd .= sprintf(" '-Glayerselect=%s'%s", $exout[$data['layer_cur']], ((int)$data['layer_cur'] > 0 ? ' -Gbgcolor=#00000000' : ''));
+        }
+
         $cmd .= ' -Tpng';
         $cmd .= ' -K'.$data['layout'];
         $cmd .= ' -o'.escapeshellarg($out); //output
         $cmd .= ' '.escapeshellarg($in); //input
+        if (isset($data['dpi']) && $data['dpi'] > 0) {
+            $cmd .= sprintf(" -Gdpi=%d", $data['dpi']);
+        }
+        $cmd .= ' 2>/dev/null';
 
         exec($cmd, $output, $error);
+
+        if (isset($data['slicespace']) && $data['slicespace'] > 0) {
+            $image = new Imagick($out);
+            $trans = new ImagickPixel('transparent');
+            $imageprops = $image->getImageGeometry();
+            $w = $imageprops['width'];
+            $h = $imageprops['height'];
+            
+            $draw = new ImagickDraw();
+            $draw->setFillColor($trans);    // Set up some colors to use for fill and outline
+            $draw->setStrokeColor( new ImagickPixel( 'rgb(40,40,40)' ) );
+            $draw->rectangle( 0, 0, $w-1, $h-1 );    // Draw the rectangle 
+            $image->drawImage( $draw ); 
+            $image->resizeImage( $w*2, $h, imagick::FILTER_LANCZOS, 1.0);
+            $image->shearImage($trans, 45 , 0); 
+            $imageprops = $image->getImageGeometry();
+            $w = $imageprops['width'];
+            $image->resizeImage( $w/2, $h/2, imagick::FILTER_LANCZOS, 1.0);
+            $image->writeImage($out);
+        }
 
         if ($error != 0){
             if($conf['debug']){
