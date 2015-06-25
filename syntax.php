@@ -55,7 +55,6 @@ class syntax_plugin_graphviz extends DokuWiki_Syntax_Plugin {
      */
     function handle($match, $state, $pos, &$handler) {
         $info = $this->getInfo();
-
         // prepare default data
         $return = array(
                         'width'     => 0,
@@ -87,6 +86,8 @@ class syntax_plugin_graphviz extends DokuWiki_Syntax_Plugin {
 		//Update: add dokulink support to URL tags (they can contain [[dokulink]] urls.
         $input = join("\n",$lines);
 		if ($this->getConf('use_svg')){
+			global $ID;
+			$return['url'] = md5(wl($ID,true)); // add current page's url to 'data' to ensure exported links work on page
 			$input = preg_replace_callback(
 				'~\b(|head|label|tail|edge)'.	// match 0 -> prefix for URL
 				'URL="\[\[(?:'.					// alternative urls to catch
