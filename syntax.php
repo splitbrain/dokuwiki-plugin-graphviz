@@ -14,11 +14,18 @@ require_once(DOKU_PLUGIN.'syntax.php');
 class syntax_plugin_graphviz extends DokuWiki_Syntax_Plugin {
 
     /**
+     * array holding defined styles.
+     */
+	 protected $_styles = array();
+
+
+    /**
      * Constructor to check config
      */
 	function __construct(){
 		// disable use_svg if 'path' is not set.
 		if(!$this->getConf('path')) $this->conf['use_svg'] = 0;
+		$this->_parseStyles($s);
 	}
 
     /**
@@ -80,11 +87,23 @@ class syntax_plugin_graphviz extends DokuWiki_Syntax_Plugin {
         }
         if(preg_match('/\bwidth=([0-9]+)\b/i', $conf,$match)) $return['width'] = $match[1];
         if(preg_match('/\bheight=([0-9]+)\b/i', $conf,$match)) $return['height'] = $match[1];
-		
-		
-
-		//Update: add dokulink support to URL tags (they can contain [[dokulink]] urls.
+        
+		// Added code for styles.
+		$styles = array();
+		// match stylenames that are written into the graphviz tag
+		if(preg_match_all('/\b(\w+)\b/i',$conf,$match)){
+			foreach ($match[1] as $style){
+				if (array_key_exists($tmp = strtolower($style),$this->_styles)){
+					$styles[] = $tmp;
+				}
+			}
+		}
+		$styles = array_unique($styles);	// remove duplicated styles
         $input = join("\n",$lines);
+
+		$this->_injectStyles($input,$styles);
+		
+		//Update: add dokulink support to URL tags (they can contain [[dokulink]] urls.
 		if ($this->getConf('use_svg')){
 			global $ID;
 			$return['url'] = md5(wl($ID,true)); // add current page's url to 'data' to ensure exported links work on page
@@ -274,6 +293,33 @@ class syntax_plugin_graphviz extends DokuWiki_Syntax_Plugin {
         return true;
     }
 
+    /**
+     * parse styles form configuration
+     */
+	 function _parseStyles(){
+		if (preg_match_all('~<style\s*name=([\'"]?)([\w]+)\\1\s*>(.*)</style>~U',$this->getConf('styles'),$matches,PREG_SET_ORDER)){
+			foreach ($matches as $match){
+				$this->_styles[strtolower($match[2])] = $match[3];
+			}
+		}
+	 }
+
+    /**
+     * parse styles form configuration
+     */
+	function _injectStyles(&$input,$styles){
+		// if there are no styles or the beginning of the graph is not found, leave it as is
+		if (!empty($styles) && (($p = strpos($input,"{")) !== false)){
+			$beg = substr($input,0,$p+1);	// beginning, i.e. "digraph name{"
+			$rest = substr($input,$p+1);	// the rest of the string
+			$input = $beg;					
+			foreach ($styles as $style){	// add each matched style right after the beginning.
+				$input .= "\n".$this->_styles[$style]."\n";
+			}
+			$input .= $rest;				// the graph code itself.
+		}
+	}
+	
 }
 
 
