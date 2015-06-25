@@ -14,6 +14,14 @@ require_once(DOKU_PLUGIN.'syntax.php');
 class syntax_plugin_graphviz extends DokuWiki_Syntax_Plugin {
 
     /**
+     * Constructor to check config
+     */
+	function __construct(){
+		// disable use_svg if 'path' is not set.
+		if(!$this->getConf('path')) $this->conf['use_svg'] = 0;
+	}
+
+    /**
      * What about paragraphs?
      */
     function getPType(){
@@ -78,36 +86,51 @@ class syntax_plugin_graphviz extends DokuWiki_Syntax_Plugin {
 
 		//Update: add dokulink support to URL tags (they can contain [[dokulink]] urls.
         $input = join("\n",$lines);
-		$input = preg_replace_callback('~\b(|head|label|tail|edge)URL="\[\[(?:(\w+\://[^\]\|]*)|(?:(\w+)>([^\]\|]*))|([^\]\|#]+)?(#[^\]\|]*)?)(?:\|([^\]]*))?\]\]"~U',function($matches){
-				global $ID;
-				$pref = @$matches[1];		// the prefix of the URL (i.e. "head" from "headURL")
-				$url = @$matches[2];		// external link (it's already url)
-				$int_t = @$matches[3];		// interwiki prefix (i.e. "wp" from "[[wp>blabla]]")
-				$int_u = @$matches[4];		// interwiki url (i.e. "blabla" from "[[wp>blabla]]")
-				$page = @$matches[5];		// dokuwiki internal page link
-				$frag = @$matches[6] ? '#'.preg_replace('~\W+~','-',strtolower(ltrim($matches[6],"#"))) : ""; // fragment for dokuwiki internal link, simple cleaning
-				$text = @$matches[7];		// text of link (i.e. "blabla" from "[[.:mylink:|blabla]]"
-				if ($page || $frag){
-					resolve_pageid(getNS($ID),$page,$exists);
-					$url = wl($page).$frag;
-				}
-				elseif($int_t){
-					static $xhtml_renderer = null;
-					if(is_null($xhtml_renderer)){
-						$xhtml_renderer = p_get_renderer('xhtml');
-						$xhtml_renderer->interwiki = getInterwiki();
-					}
-					$url = $xhtml_renderer->_resolveInterWiki($int_t,$int_u,$exists);
-				}
-				return "{$pref}URL=\"{$url}\";{$pref}target=_top".($text ? ";{$pref}tooltip=\"{$text}\"" : "");
-		},$input);
-
+		if ($this->getConf('use_svg')){
+			$input = preg_replace_callback(
+				'~\b(|head|label|tail|edge)'.	// match 0 -> prefix for URL
+				'URL="\[\[(?:'.					// alternative urls to catch
+					'(\w+\://[^\]\|]*)'.		// simple url with any shema
+					'|(?:(\w+)>([^\]\|]*))'.	// interwiki link
+					'|([^\]\|#]+)?(#[^\]\|]*)?)'.	// dokuwiki link and/or fragment 
+				'(?:\|([^\]]*))?'.				// text 
+				'\]\]"~U',
+				array(__CLASS__,'_parse_links'),
+				$input);
+		}
         $return['md5'] = md5($input); // we only pass a hash around
         // store input for later use
         io_saveFile($this->_cachename($return,'txt'),$input);
         return $return;
     }
 
+	/**
+	* callback function to preg_replace_callback, that fixes urls.
+	*/
+	public static function _parse_links($matches){
+		global $ID;
+		$pref = @$matches[1];		// the prefix of the URL (i.e. "head" from "headURL")
+		$url = @$matches[2];		// external link (it's already url)
+		$int_t = @$matches[3];		// interwiki prefix (i.e. "wp" from "[[wp>blabla]]")
+		$int_u = @$matches[4];		// interwiki url (i.e. "blabla" from "[[wp>blabla]]")
+		$page = @$matches[5];		// dokuwiki internal page link
+		$frag = @$matches[6] ? '#'.preg_replace('~\W+~','-',strtolower(ltrim($matches[6],"#"))) : ""; // fragment for dokuwiki internal link, simple cleaning
+		$text = @$matches[7];		// text of link (i.e. "blabla" from "[[.:mylink:|blabla]]"
+		if ($page || $frag){
+			resolve_pageid(getNS($ID),$page,$exists);
+			$url = wl($page).$frag;
+		}
+		elseif($int_t){
+			static $xhtml_renderer = null;
+			if(is_null($xhtml_renderer)){
+				$xhtml_renderer = p_get_renderer('xhtml');
+				$xhtml_renderer->interwiki = getInterwiki();
+			}
+			$url = $xhtml_renderer->_resolveInterWiki($int_t,$int_u,$exists);
+		}
+		return "{$pref}URL=\"{$url}\";{$pref}target=_top".($text ? ";{$pref}tooltip=\"{$text}\"" : "");
+	}
+	
     /**
      * Cache file is based on parameters that influence the result image
      */
@@ -124,16 +147,18 @@ class syntax_plugin_graphviz extends DokuWiki_Syntax_Plugin {
      */
     function render($format, &$R, $data) {
         if($format == 'xhtml'){
-			//Update: generate both png and svg, embed svg but with fallback to png.
-            $img_svg = DOKU_BASE.'lib/plugins/graphviz/img.php?'.buildURLparams(array_merge($data,array('format'=>'svg')));
+			if ($this->getConf('use_svg')){
+				//Update: generate both png and svg, embed svg but with fallback to png.
+				$img_svg = DOKU_BASE.'lib/plugins/graphviz/img.php?'.buildURLparams(array_merge($data,array('format'=>'svg')));
+				// embed svg as object: the links in svg can be clicked (and also animations are supported)
+				$R->doc .= '<object type="image/svg+xml" data="'.$img_svg.'" class="media'.$data['align'].'" alt=""';
+				if($data['width'])  $R->doc .= ' width="'.$data['width'].'"';
+				if($data['height']) $R->doc .= ' height="'.$data['height'].'"';
+				if($data['align'] == 'right') $R->doc .= ' align="right"';
+				if($data['align'] == 'left')  $R->doc .= ' align="left"';
+				$R->doc .= '>';
+			}
             $img_png = DOKU_BASE.'lib/plugins/graphviz/img.php?'.buildURLparams(array_merge($data,array('format'=>'png')));
-            // embed svg as object: the links in svg can be clicked (and also animations are supported)
-			$R->doc .= '<object type="image/svg+xml" data="'.$img_svg.'" class="media'.$data['align'].'" alt=""';
-            if($data['width'])  $R->doc .= ' width="'.$data['width'].'"';
-            if($data['height']) $R->doc .= ' height="'.$data['height'].'"';
-            if($data['align'] == 'right') $R->doc .= ' align="right"';
-            if($data['align'] == 'left')  $R->doc .= ' align="left"';
-            $R->doc .= '>';
 			// embed fallback: if browser does not support svg bia object embed, it will display the png image instead.
 			$R->doc .= '<img src="'.$img_png.'" class="media'.$data['align'].'" alt=""';
             if($data['width'])  $R->doc .= ' width="'.$data['width'].'"';
@@ -141,8 +166,9 @@ class syntax_plugin_graphviz extends DokuWiki_Syntax_Plugin {
             if($data['align'] == 'right') $R->doc .= ' align="right"';
             if($data['align'] == 'left')  $R->doc .= ' align="left"';
             $R->doc .= '/>';
-
-			$R->doc .='</object>';
+			if ($this->getConf('use_svg')){	
+				$R->doc .='</object>'; 
+			}
             return true;
         }elseif($format == 'odt'){
             $src = $this->_imgfile($data);
