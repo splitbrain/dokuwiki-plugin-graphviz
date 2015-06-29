@@ -172,8 +172,8 @@ class syntax_plugin_graphviz extends DokuWiki_Syntax_Plugin {
      * Create output
      */
     function render($format, &$R, $data) {
-        if($format == 'xhtml'){
-			if ($this->getConf('use_svg')){
+		if($format == 'xhtml' || $format == 'dw2pdf'){
+			if ($this->getConf('use_svg') && get_class($R) != 'renderer_plugin_dw2pdf'){
 				//Update: generate both png and svg, embed svg but with fallback to png.
 				$img_svg = DOKU_BASE.'lib/plugins/graphviz/img.php?'.buildURLparams(array_merge($data,array('format'=>'svg')));
 				// embed svg as object: the links in svg can be clicked (and also animations are supported)
@@ -184,7 +184,13 @@ class syntax_plugin_graphviz extends DokuWiki_Syntax_Plugin {
 				if($data['align'] == 'left')  $R->doc .= ' align="left"';
 				$R->doc .= '>';
 			}
-            $img_png = DOKU_BASE.'lib/plugins/graphviz/img.php?'.buildURLparams(array_merge($data,array('format'=>'png')));
+			if (get_class($R) == 'renderer_plugin_dw2pdf'){
+				// for pdf export: mpdf fetches the url, and without authorization it is automatic fail. We need to set a file src as real path.
+				$cache = $this->_imgfile(array_merge($data,array('format'=>'png')));
+				$img_png = $cache;
+			}else{
+				$img_png = DOKU_BASE.'lib/plugins/graphviz/img.php?'.buildURLparams(array_merge($data,array('format'=>'png')));
+			}
 			// embed fallback: if browser does not support svg bia object embed, it will display the png image instead.
 			$R->doc .= '<img src="'.$img_png.'" class="media'.$data['align'].'" alt=""';
             if($data['width'])  $R->doc .= ' width="'.$data['width'].'"';
@@ -192,23 +198,13 @@ class syntax_plugin_graphviz extends DokuWiki_Syntax_Plugin {
             if($data['align'] == 'right') $R->doc .= ' align="right"';
             if($data['align'] == 'left')  $R->doc .= ' align="left"';
             $R->doc .= '/>';
-			if ($this->getConf('use_svg')){	
+			if ($this->getConf('use_svg') && get_class($R) != 'renderer_plugin_dw2pdf'){	
 				$R->doc .='</object>'; 
 			}
             return true;
         }elseif($format == 'odt'){
             $src = $this->_imgfile($data);
             $R->_odtAddImage($src,$data['width'],$data['height'],$data['align']);
-            return true;
-        }elseif($format == 'dw2pdf'){
-			//Update: dw2pdf does not support svg, so return only png image.
-            $img = DOKU_BASE.'lib/plugins/graphviz/img.php?'.strtr('&amp;','&',buildURLparams(array_merge($data,array('format'=>'png'))));
-            $R->doc .= '<object type="image/svg+xml" data="'.$img.'" class="media'.$data['align'].'" alt=""';
-            if($data['width'])  $R->doc .= ' width="'.$data['width'].'"';
-            if($data['height']) $R->doc .= ' height="'.$data['height'].'"';
-            if($data['align'] == 'right') $R->doc .= ' align="right"';
-            if($data['align'] == 'left')  $R->doc .= ' align="left"';
-            $R->doc .= '></object>';
             return true;
         }
         return false;
