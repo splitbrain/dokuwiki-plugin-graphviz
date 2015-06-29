@@ -71,10 +71,17 @@ class syntax_plugin_graphviz extends DokuWiki_Syntax_Plugin {
                         'version'   => $info['date'], //force rebuild of images on update
                        );
 
-        // prepare input
-        $lines = explode("\n",$match);
-        $conf = array_shift($lines);
-        array_pop($lines);
+        // prepare input, UPDATE: separate tags from data by preg instead of first/last line, but leave the old behavior as fallback
+		if (preg_match('~<graphviz([^>]*)>((?:[\n]|.)*)</graphviz>~Ui',$match,$parts)){
+			$input = $parts[2];
+			$conf = $parts[1];
+		}
+		else{
+			$lines = explode("\n",$match);
+			$conf = array_shift($lines);
+			array_pop($lines);
+			$input = join("\n",$lines);
+		}
 
         // match config options
         if(preg_match('/\b(left|center|right)\b/i',$conf,$match)) $return['align'] = $match[1];
@@ -99,7 +106,6 @@ class syntax_plugin_graphviz extends DokuWiki_Syntax_Plugin {
 			}
 		}
 		$styles = array_unique($styles);	// remove duplicated styles
-        $input = join("\n",$lines);
 
 		$this->_injectStyles($input,$styles);
 		
