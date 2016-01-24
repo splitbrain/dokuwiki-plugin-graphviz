@@ -1,7 +1,7 @@
 base    graphviz
 author  Andreas Gohr
 email   andi@splitbrain.org
-date    2013-12-25
+date    2014-05-21
 name    Graphviz Plugin
 desc    Create graph images from Graphviz dot language
 url     http://www.dokuwiki.org/plugin:graphviz
