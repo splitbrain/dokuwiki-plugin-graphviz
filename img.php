@@ -12,9 +12,18 @@ require_once(DOKU_INC.'inc/init.php');
 $data = $_REQUEST;
 $plugin = plugin_load('syntax','graphviz');
 $cache  = $plugin->_imgfile($data);
-if(!$cache) _fail();
+// Update: show svg or png depending on format.
+if(!$cache) _fail($data['format']);
+// Update: support both png and svg
+$img_format = ($data['format'] == 'png' ? 'png' : 'svg');
+if ($img_format == 'svg'){
+	header('Content-Type: image/svg+xml');
+}
+else
+{
+	header('Content-Type: image/png');
+}
 
-header('Content-Type: image/png;');
 header('Expires: '.gmdate("D, d M Y H:i:s", time()+max($conf['cachetime'], 3600)).' GMT');
 header('Cache-Control: public, proxy-revalidate, no-transform, max-age='.max($conf['cachetime'], 3600));
 header('Pragma: public');
@@ -22,10 +31,16 @@ http_conditionalRequest($time);
 echo io_readFile($cache,false);
 
 
-function _fail(){
-    header("HTTP/1.0 404 Not Found");
-    header('Content-Type: image/png');
-    echo io_readFile('broken.png',false);
+function _fail($format){
+	if ($format == 'svg'){
+		header("HTTP/1.0 404 Not Found");
+		header('Content-Type: image/svg+xml');
+		echo io_readFile('broken.svg',false);
+	}else{
+		header("HTTP/1.0 404 Not Found");
+		header('Content-Type: image/png');
+		echo io_readFile('broken.png',false);
+	}
     exit;
 }
 
