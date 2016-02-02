@@ -45,7 +45,7 @@ class syntax_plugin_graphviz extends DokuWiki_Syntax_Plugin {
     /**
      * Handle the match
      */
-    function handle($match, $state, $pos, &$handler) {
+    function handle($match, $state, $pos, Doku_Handler $handler) {
         $info = $this->getInfo();
 
         // prepare default data
@@ -99,7 +99,7 @@ class syntax_plugin_graphviz extends DokuWiki_Syntax_Plugin {
      * Edited by Michael Kling for the MAP patch.
      * @todo ODT format doesnt support maps
      */
-    function render($format, &$R, $data) {
+    function render($format, Doku_Renderer $R, $data) {
         if($format == 'xhtml'){
             $img = DOKU_BASE.'lib/plugins/graphviz/img.php?'.buildURLparams($data);
             $mapcache  = $this->_mapfile($data);
