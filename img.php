@@ -12,9 +12,12 @@ require_once(DOKU_INC.'inc/init.php');
 $data = $_REQUEST;
 $plugin = plugin_load('syntax','graphviz');
 $cache  = $plugin->_imgfile($data);
+$content_type = $plugin->_format == 'png' ? 'Content-Type: image/png' : 'Content-Type: image/svg+xml';
+
 if(!$cache) _fail();
 
-header('Content-Type: image/png;');
+header($content_type);
+
 header('Expires: '.gmdate("D, d M Y H:i:s", time()+max($conf['cachetime'], 3600)).' GMT');
 header('Cache-Control: public, proxy-revalidate, no-transform, max-age='.max($conf['cachetime'], 3600));
 header('Pragma: public');
@@ -24,8 +27,8 @@ echo io_readFile($cache,false);
 
 function _fail(){
     header("HTTP/1.0 404 Not Found");
-    header('Content-Type: image/png');
-    echo io_readFile('broken.png',false);
+    header($content_type);
+    echo io_readFile('broken.' . $plugin->_format, false);
     exit;
 }
 
