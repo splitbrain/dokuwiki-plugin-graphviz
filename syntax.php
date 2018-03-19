@@ -119,6 +119,9 @@ class syntax_plugin_graphviz extends DokuWiki_Syntax_Plugin {
      * Return path to the rendered image on our local system
      */
     function _imgfile($data){
+        // filter out unwanted GET parametres
+        $data=array_intersect_key( $data, array( 'width' => 1, 'height' => 1, 'layout' => 1, 'align' => 1, 'version' => 1, 'md5' => 1 ));
+
         $cache  = $this->_cachename($data,'png');
 
         // create the file if needed
