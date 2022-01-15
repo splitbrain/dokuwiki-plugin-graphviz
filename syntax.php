@@ -127,7 +127,8 @@ class syntax_plugin_graphviz extends DokuWiki_Syntax_Plugin {
             if($this->getConf('path')){
                 $ok = $this->_run($data,$in,$cache);
             }else{
-                $ok = $this->_remote($data,$in,$cache);
+
+                $ok = $this->getConf('google_fallback') && $this->_remote($data,$in,$cache);
             }
             if(!$ok) return false;
             clearstatcache();
