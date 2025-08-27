@@ -2,6 +2,7 @@
 
 use dokuwiki\Extension\SyntaxPlugin;
 use dokuwiki\HTTP\DokuHTTPClient;
+use dokuwiki\Logger;
 
 /**
  * graphviz-Plugin: Parses graphviz-blocks
@@ -10,11 +11,6 @@ use dokuwiki\HTTP\DokuHTTPClient;
  * @author     Carl-Christian Salvesen <calle@ioslo.net>
  * @author     Andreas Gohr <andi@splitbrain.org>
  */
-
-if (!defined('DOKU_INC')) define('DOKU_INC', realpath(__DIR__ . '/../../') . '/');
-if (!defined('DOKU_PLUGIN')) define('DOKU_PLUGIN', DOKU_INC . 'lib/plugins/');
-require_once(DOKU_PLUGIN . 'syntax.php');
-
 class syntax_plugin_graphviz extends SyntaxPlugin
 {
     /**
@@ -57,7 +53,13 @@ class syntax_plugin_graphviz extends SyntaxPlugin
         $info = $this->getInfo();
 
         // prepare default data
-        $return = ['width'     => 0, 'height'    => 0, 'layout'    => 'dot', 'align'     => '', 'version'   => $info['date']];
+        $return = [
+            'width'     => 0,
+            'height'    => 0,
+            'layout'    => 'dot',
+            'align'     => '',
+            'version'   => $info['date']
+        ];
 
         // prepare input
         $lines = explode("\n", $match);
@@ -81,20 +83,9 @@ class syntax_plugin_graphviz extends SyntaxPlugin
         $return['md5'] = md5($input); // we only pass a hash around
 
         // store input for later use
-        io_saveFile($this->_cachename($return, 'txt'), $input);
+        io_saveFile($this->getCachename($return, 'txt'), $input);
 
         return $return;
-    }
-
-    /**
-     * Cache file is based on parameters that influence the result image
-     */
-    public function _cachename($data, $ext)
-    {
-        unset($data['width']);
-        unset($data['height']);
-        unset($data['align']);
-        return getcachename(implode('x', array_values($data)), '.graphviz.' . $ext);
     }
 
     /**
@@ -104,7 +95,7 @@ class syntax_plugin_graphviz extends SyntaxPlugin
     {
         if ($format == 'xhtml') {
             $img = DOKU_BASE . 'lib/plugins/graphviz/img.php?' . buildURLparams($data);
-            $R->doc .= '<img src="' . $img . '" class="media' . $data['align'] . '" alt=""';
+            $R->doc .= '<img src="' . $img . '" class="media' . $data['align'] . ' plugin_graphviz" alt=""';
             if ($data['width'])  $R->doc .= ' width="' . $data['width'] . '"';
             if ($data['height']) $R->doc .= ' height="' . $data['height'] . '"';
             if ($data['align'] == 'right') $R->doc .= ' align="right"';
@@ -112,7 +103,8 @@ class syntax_plugin_graphviz extends SyntaxPlugin
             $R->doc .= '/>';
             return true;
         } elseif ($format == 'odt') {
-            $src = $this->_imgfile($data);
+            /** @var Doku_Renderer_odt $R */
+            $src = $this->imgFile($data);
             $R->_odtAddImage($src, $data['width'], $data['height'], $data['align']);
             return true;
         }
@@ -120,27 +112,33 @@ class syntax_plugin_graphviz extends SyntaxPlugin
     }
 
     /**
+     * Cache file is based on parameters that influence the result image
+     */
+    protected function getCachename($data, $ext)
+    {
+        unset($data['width']);
+        unset($data['height']);
+        unset($data['align']);
+        return getcachename(implode('x', array_values($data)), '.graphviz.' . $ext);
+    }
+
+    /**
      * Return path to the rendered image on our local system
      */
-    public function _imgfile($data)
+    public function imgFile($data)
     {
-        $cache  = $this->_cachename($data, 'png');
+        $cache  = $this->getCachename($data, 'svg');
 
         // create the file if needed
         if (!file_exists($cache)) {
-            $in = $this->_cachename($data, 'txt');
+            $in = $this->getCachename($data, 'txt');
             if ($this->getConf('path')) {
-                $ok = $this->_run($data, $in, $cache);
+                $ok = $this->renderLocal($data, $in, $cache);
             } else {
-                $ok = $this->_remote($data, $in, $cache);
+                $ok = $this->renderRemote($data, $in, $cache);
             }
             if (!$ok) return false;
             clearstatcache();
-        }
-
-        // resized version
-        if ($data['width']) {
-            $cache = media_resize_image($cache, 'png', $data['width'], $data['height']);
         }
 
         // something went wrong, we're missing the file
@@ -151,45 +149,53 @@ class syntax_plugin_graphviz extends SyntaxPlugin
 
     /**
      * Render the output remotely at google
+     *
+     * @param array  $data The graphviz data
+     * @param string $in   The input file path
+     * @param string $out  The output file path
      */
-    public function _remote($data, $in, $out)
+    protected function renderRemote($data, $in, $out)
     {
         if (!file_exists($in)) {
-            if ($conf['debug']) {
-                dbglog($in, 'no such graphviz input file');
-            }
+            Logger::debug("Graphviz: missing input file $in");
             return false;
         }
 
         $http = new DokuHTTPClient();
         $http->timeout = 30;
+        $http->headers['Content-Type'] = 'application/json';
 
         $pass = [];
-        $pass['cht'] = 'gv:' . $data['layout'];
-        $pass['chl'] = io_readFile($in);
+        $pass['layout'] = $data['layout'];
+        $pass['graph'] = io_readFile($in);
+        #if($data['width'])  $pass['width']  = (int) $data['width'];
+        #if($data['height']) $pass['height'] = (int) $data['height'];
 
-        $img = $http->post('http://chart.apis.google.com/chart', $pass, '&');
-        if (!$img) return false;
+        $img = $http->post('https://quickchart.io/graphviz', json_encode($pass));
+        if (!$img) {
+            Logger::debug("Graphviz: remote API call failed", $http->resp_body);
+            return false;
+        }
 
         return io_saveFile($out, $img);
     }
 
     /**
      * Run the graphviz program
+     *
+     * @param array  $data The graphviz data
+     * @param string $in   The input file path
+     * @param string $out  The output file path
      */
-    public function _run($data, $in, $out)
+    public function renderLocal($data, $in, $out)
     {
-        global $conf;
-
         if (!file_exists($in)) {
-            if ($conf['debug']) {
-                dbglog($in, 'no such graphviz input file');
-            }
+            Logger::debug("Graphviz: missing input file $in");
             return false;
         }
 
         $cmd  = $this->getConf('path');
-        $cmd .= ' -Tpng';
+        $cmd .= ' -Tsvg';
         $cmd .= ' -K' . $data['layout'];
         $cmd .= ' -o' . escapeshellarg($out); //output
         $cmd .= ' ' . escapeshellarg($in); //input
@@ -197,9 +203,7 @@ class syntax_plugin_graphviz extends SyntaxPlugin
         exec($cmd, $output, $error);
 
         if ($error != 0) {
-            if ($conf['debug']) {
-                dbglog(implode("\n", $output), 'graphviz command failed: ' . $cmd);
-            }
+            Logger::debug("Graphviz: command failed $cmd", implode("\n", $output));
             return false;
         }
         return true;
